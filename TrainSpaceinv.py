@@ -13,7 +13,7 @@ class DoubleDQNAgent:
         self.action_size = action_size
         self.memory = deque(maxlen=2000)
         self.gamma = 0.99    # discount rate
-        self.epsilon = 1.0  # exploration rate
+        self.epsilon = 0.7  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 0.00025
@@ -126,6 +126,15 @@ class SpaceInvadersEnv:
             done = terminated or truncated
         else:
             next_state, reward, done, info = result
+
+        # Add a small penalty for wrong shots
+        if action == 2 or action == 3:
+            reward -= 0.1
+
+        # Add a penalty for losing
+        if done:
+            reward -= 10
+
         if isinstance(next_state, tuple):
             next_state = next_state[0]  # Extract the first element if next_state is a tuple
         return next_state, reward, done, info
@@ -141,8 +150,8 @@ def main():
     state_size = (84, 84, 4)
     action_size = env.env.action_space.n
     agent = DoubleDQNAgent(state_size, action_size)
-    batch_size = 32
-    episodes = 500
+    batch_size = 2
+    episodes = 50
 
     for e in range(episodes):
         state = env.reset()
