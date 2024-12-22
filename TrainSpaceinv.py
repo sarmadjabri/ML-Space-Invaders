@@ -94,6 +94,8 @@ class SpaceInvadersEnv:
         pygame.display.set_caption('Space Invaders AI')
         self.clock = pygame.time.Clock()
         self.fps = 60
+        self.last_shot_time = 0  # Track when the last shot was fired
+        self.shot_penalty_time = 20  # The max time before penalty for not firing
 
     def render(self):
         frame = self.env.ale.getScreenRGB()
@@ -113,13 +115,18 @@ class SpaceInvadersEnv:
 
     def step(self, action):
         action_with_fire = action
-        if action == 2 or action == 3:
-            action_with_fire = 0  # Set it to fire only
-        elif action == 1:
-            action_with_fire = 1  # Move right and fire
-        elif action == 0:
-            action_with_fire = 0  # Move left and fire
+        fired_shot = False
 
+        # Modify action mapping based on your custom action scheme
+        if action == 2 or action == 3:  # Firing
+            action_with_fire = 0
+            fired_shot = True
+        elif action == 1:  # Move right and fire
+            action_with_fire = 1
+        elif action == 0:  # Move left and fire
+            action_with_fire = 0
+
+        # Apply action in environment
         result = self.env.step(action_with_fire)
         if len(result) == 5:
             next_state, reward, terminated, truncated, info = result
@@ -127,16 +134,30 @@ class SpaceInvadersEnv:
         else:
             next_state, reward, done, info = result
 
-        # Add a small penalty for wrong shots
-        if action == 2 or action == 3:
-            reward -= 0.1
+        # Track time since last shot and apply penalty if too long
+        if fired_shot:
+            self.last_shot_time = 0  # Reset shot time if a shot was fired
+        else:
+            self.last_shot_time += 1
+            if self.last_shot_time > self.shot_penalty_time:  # Too long without shooting
+                reward -= 0.2  # Penalize for taking too long to shoot
 
-        # Add a penalty for losing
+        # Penalty for missing shots
+        if fired_shot:
+            if 'lives' in info and info['lives'] < 3:  # Check if a shot missed or was unsuccessful
+                reward -= 0.1  # Missed shots penalty
+
+        # Reward for successful shots (destroyed enemies or enemies hit)
+        if 'score' in info and info['score'] > 0:
+            reward += 1  # Reward for hitting a target
+
+        # Penalty for losing
         if done:
-            reward -= 10
+            reward -= 10  # Strong penalty for losing the game
 
         if isinstance(next_state, tuple):
             next_state = next_state[0]  # Extract the first element if next_state is a tuple
+
         return next_state, reward, done, info
 
     def close(self):
