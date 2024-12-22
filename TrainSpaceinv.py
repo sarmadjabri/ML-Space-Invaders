@@ -25,12 +25,25 @@ class DoubleDQNAgent:
     def _build_model(self):
         model = keras.Sequential()
         model.add(keras.layers.Input(shape=self.state_size))
+
+        # Adding more convolutional layers
         model.add(keras.layers.Conv2D(32, (8, 8), strides=(4, 4), activation='relu'))
         model.add(keras.layers.Conv2D(64, (4, 4), strides=(2, 2), activation='relu'))
-        model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
+        model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))  # More feature extraction
+        model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))  # Even more feature extraction
+        model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))  # Pooling layer to reduce dimensionality
+
+        # Flatten layer
         model.add(keras.layers.Flatten())
+
+        # Adding more fully connected layers
         model.add(keras.layers.Dense(512, activation='relu'))
+        model.add(keras.layers.Dense(512, activation='relu'))  # Adding another dense layer for better feature learning
+        model.add(keras.layers.Dense(256, activation='relu'))  # Another dense layer with fewer units
+
+        # Output layer with action size
         model.add(keras.layers.Dense(self.action_size, activation='linear'))
+
         model.compile(loss='mse', optimizer=keras.optimizers.Adam(learning_rate=self.learning_rate))
         return model
 
@@ -67,6 +80,7 @@ class DoubleDQNAgent:
     def save(self, name):
         self.model.save_weights(name)
 
+
 def preprocess_frame(frame):
     if isinstance(frame, tuple):
         frame = frame[0]  # Extract the first element if frame is a tuple
@@ -96,6 +110,8 @@ class SpaceInvadersEnv:
         self.fps = 60
         self.last_shot_time = 0  # Track when the last shot was fired
         self.shot_penalty_time = 20  # The max time before penalty for not firing
+        self.last_lives = 3  # Initial lives count to track loss of life
+        self.last_score = 0  # Initial score to track successful shots
 
     def render(self):
         frame = self.env.ale.getScreenRGB()
@@ -111,11 +127,14 @@ class SpaceInvadersEnv:
         state = self.env.reset()
         if isinstance(state, tuple):
             state = state[0]  # Extract the first element if state is a tuple
+        self.last_lives = 3  # Reset lives on a new episode
+        self.last_score = 0  # Reset score on a new episode
         return state
 
     def step(self, action):
         action_with_fire = action
         fired_shot = False
+        reward = 0
 
         # Modify action mapping based on your custom action scheme
         if action == 2 or action == 3:  # Firing
@@ -142,18 +161,33 @@ class SpaceInvadersEnv:
             if self.last_shot_time > self.shot_penalty_time:  # Too long without shooting
                 reward -= 0.2  # Penalize for taking too long to shoot
 
-        # Penalty for missing shots
-        if fired_shot:
-            if 'lives' in info and info['lives'] < 3:  # Check if a shot missed or was unsuccessful
-                reward -= 0.1  # Missed shots penalty
-
         # Reward for successful shots (destroyed enemies or enemies hit)
-        if 'score' in info and info['score'] > 0:
-            reward += 1  # Reward for hitting a target
+        if 'score' in info and info['score'] > self.last_score:
+            reward += 1  # Reward for hitting a target (enemy killed)
 
-        # Penalty for losing
+        # Reward for dodging bullets (you can define this based on the agent's behavior or environment state)
+        if 'lives' in info and info['lives'] > self.last_lives:
+            reward += 0.5  # Reward for dodging bullets (staying alive)
+        self.last_lives = info.get('lives', self.last_lives)
+
+        # Reward for strafing (moving left or right)
+        if action in [0, 1]:  # Strafing left or right
+            reward += 0.1  # Reward for strafing
+
+        # Penalty for missing shots
+        if fired_shot and 'score' in info and info['score'] == self.last_score:
+            reward -= 0.1  # Penalty for missing a shot
+
+        # Update last score to track changes
+        self.last_score = info.get('score', self.last_score)
+
+        # Penalty for losing life or dying
         if done:
             reward -= 10  # Strong penalty for losing the game
+
+        # Penalty for not dodging bullets (getting hit and losing life)
+        if 'lives' in info and info['lives'] < self.last_lives:
+            reward -= 1  # Penalty for getting hit (losing a life)
 
         if isinstance(next_state, tuple):
             next_state = next_state[0]  # Extract the first element if next_state is a tuple
@@ -163,6 +197,8 @@ class SpaceInvadersEnv:
     def close(self):
         self.env.close()
         pygame.quit()
+
+
 
 def main():
     pygame.init()
