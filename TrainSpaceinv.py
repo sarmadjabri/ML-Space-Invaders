@@ -159,35 +159,37 @@ class SpaceInvadersEnv:
         else:
             self.last_shot_time += 1
             if self.last_shot_time > self.shot_penalty_time:  # Too long without shooting
-                reward -= 0.2  # Penalize for taking too long to shoot
+                print(f"Penalty: Took too long without firing. Last shot time: {self.last_shot_time}")
+                reward -= 5  # Increased penalty for not firing
 
         # Reward for successful shots (destroyed enemies or enemies hit)
         if 'score' in info and info['score'] > self.last_score:
-            reward += 1  # Reward for hitting a target (enemy killed)
+            print(f"Reward: Successful shot! Score increased from {self.last_score} to {info['score']}")
+            reward += 3  # Reward for hitting a target (enemy killed)
 
         # Reward for dodging bullets (you can define this based on the agent's behavior or environment state)
         if 'lives' in info and info['lives'] > self.last_lives:
-            reward += 0.5  # Reward for dodging bullets (staying alive)
+            print(f"Reward: Dodged a bullet! Lives increased to {info['lives']}")
+            reward += 3  # Reward for dodging bullets (staying alive)
         self.last_lives = info.get('lives', self.last_lives)
-
-        # Reward for strafing (moving left or right)
-        if action in [0, 1]:  # Strafing left or right
-            reward += 0.1  # Reward for strafing
 
         # Penalty for missing shots
         if fired_shot and 'score' in info and info['score'] == self.last_score:
-            reward -= 0.1  # Penalty for missing a shot
-
-        # Update last score to track changes
-        self.last_score = info.get('score', self.last_score)
+            print(f"Penalty: Missed shot. No score change. Current score: {self.last_score}")
+            reward -= 5  # Increased penalty for missing a shot
 
         # Penalty for losing life or dying
         if done:
-            reward -= 10  # Strong penalty for losing the game
+            print(f"Penalty: Game Over! Losing life or dying.")
+            reward -= 20  # Strong penalty for losing the game
 
         # Penalty for not dodging bullets (getting hit and losing life)
         if 'lives' in info and info['lives'] < self.last_lives:
-            reward -= 1  # Penalty for getting hit (losing a life)
+            print(f"Penalty: Hit by bullet! Lives decreased from {self.last_lives} to {info['lives']}")
+            reward -= 5  # Increased penalty for getting hit (losing a life)
+
+        # Update last score to track changes
+        self.last_score = info.get('score', self.last_score)
 
         if isinstance(next_state, tuple):
             next_state = next_state[0]  # Extract the first element if next_state is a tuple
@@ -197,7 +199,6 @@ class SpaceInvadersEnv:
     def close(self):
         self.env.close()
         pygame.quit()
-
 
 
 def main():
