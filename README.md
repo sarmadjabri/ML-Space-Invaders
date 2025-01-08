@@ -3,6 +3,5 @@ How cool would it be for Machine learning to try Space invaders because why not.
 
 Project Description:
   Double DQN neural network paired with reinforcement learning
-  Uses pre trained model and builds off of current progress from that
-  Small scale and should be scaled up for those who aren't using potato computers.
+  Uses pre trained model and builds off of current progress
   More information is in the code comments accomadated by AI for explanation.
