@@ -5,7 +5,7 @@ import tensorflow as tf
 from tensorflow import keras
 from collections import deque
 import cv2
-
+import time  # Needed for ensuring game load time
 
 class DoubleDQNAgent:
     def __init__(self, state_size, action_size):
@@ -13,11 +13,11 @@ class DoubleDQNAgent:
         self.action_size = action_size
         self.memory = deque(maxlen=2000)
         self.gamma = 0.99           # discount factor
-        self.epsilon = 0.7          # exploration rate
+        self.epsilon = 1            # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
-        self.learning_rate = 0.00025
-        self.target_update_freq = 1000  # update target network every fixed number of training steps
+        self.learning_rate = 0.001
+        self.target_update_freq = 10  # update target network every fixed number of training steps
         self.train_step = 0
 
         # Build the online and target networks
@@ -54,7 +54,7 @@ class DoubleDQNAgent:
         self.memory.append((state, action, reward, next_state, done))
 
     def act(self, state):
-        """Choose an action using an epsilon-greedy policy."""
+        """Choose an action using epsilon-greedy policy."""
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
         q_values = self.model.predict(state, verbose=0)
@@ -106,7 +106,7 @@ class DoubleDQNAgent:
 
 def preprocess_frame(frame):
     """
-    Convert the game frame to grayscale, resize it to 84x84, and normalize.
+    Convert the game frame to grayscale, resize to 84x84, and normalize.
     """
     if isinstance(frame, tuple):
         frame = frame[0]
@@ -133,12 +133,22 @@ def stack_frames(stacked_frames, state, is_new):
 
 
 class SpaceInvadersEnv:
-    def __init__(self, env_name='SpaceInvaders-v4'):
+    def __init__(self, env_name='SpaceInvaders-v4', window_width=800, window_height=600):
+        # Create the Gym environment.
+        # IMPORTANT: Ensure that Stella (or your chosen Atari emulator) is installed and properly configured.
         self.env = gym.make(env_name)
+
+        # Allow some time for the game to load fully (powered by Stella).
+        time.sleep(3)
+
+        # These window parameters are kept for compatibility, though no visual rendering is performed.
+        self.window_width = window_width
+        self.window_height = window_height
 
         # Reward parameters (tweak these as needed)
         self.MISS_SHOT_PENALTY = -5      # Penalty for firing and not hitting
         self.SUCCESS_REWARD = 10         # Reward for a successful shot (score increase)
+        self.SHOOT_BONUS = 2             # Bonus for shooting to encourage the agent to shoot more often
         self.LIFE_LOSS_PENALTY = -20     # Penalty for losing a life
         self.DODGE_REWARD = 2            # Bonus for movement (dodging) without life loss
         self.WIN_SCORE = 1000            # Threshold score for winning
@@ -148,6 +158,12 @@ class SpaceInvadersEnv:
         self.last_score = 0
         self.last_lives = 3  # Initial lives (adjust if necessary)
 
+        # Number of frames to ignore shot penalties while the game is still "loading in" (flashing)
+        self.frames_to_ignore = 50
+        self.loading_steps = self.frames_to_ignore
+
+    # The render method has been removed to eliminate visual output during training.
+
     def reset(self):
         """Reset the environment and tracking variables."""
         state = self.env.reset()
@@ -155,12 +171,14 @@ class SpaceInvadersEnv:
             state = state[0]
         self.last_score = 0
         self.last_lives = 3
+        # Reset the loading_steps counter each episode
+        self.loading_steps = self.frames_to_ignore
         return state
 
     def step(self, action):
         """
         Map the chosen action to the environment's action space and compute a custom reward.
-        
+
         Custom action mapping (example):
           - 0: move left
           - 1: move right
@@ -196,11 +214,17 @@ class SpaceInvadersEnv:
 
         # Reward logic for firing:
         if fired_shot:
-            if current_score > self.last_score:
-                reward += self.SUCCESS_REWARD
-            else:
-                reward += self.MISS_SHOT_PENALTY
-        # Reward for dodging: if the agent moves and does not lose a life
+            # Always add the shooting bonus to encourage firing.
+            reward += self.SHOOT_BONUS
+            # Only apply shot reward/penalty if the game has finished loading.
+            if self.loading_steps <= 0:
+                if env_reward > 0:
+                    reward += self.SUCCESS_REWARD
+                else:
+                    reward += self.MISS_SHOT_PENALTY
+            # During the loading period, do not penalize a "missed" shot.
+
+        # Reward for dodging: if the agent moves (left/right) and does not lose a life
         elif action in [0, 1] and current_lives == self.last_lives:
             reward += self.DODGE_REWARD
 
@@ -208,13 +232,17 @@ class SpaceInvadersEnv:
         if current_lives < self.last_lives:
             reward += self.LIFE_LOSS_PENALTY
 
-        # Bonus for winning if the game is over and the score is high enough
+        # Bonus for winning if the game is over and score is high enough
         if done and current_score >= self.WIN_SCORE:
             reward += self.WIN_REWARD
 
         # Update tracking variables
         self.last_score = current_score
         self.last_lives = current_lives
+
+        # Decrement the loading_steps counter each step (until it reaches 0)
+        if self.loading_steps > 0:
+            self.loading_steps -= 1
 
         if isinstance(next_state, tuple):
             next_state = next_state[0]
@@ -232,8 +260,8 @@ def main():
     action_size = env.env.action_space.n  # Use the environment's action space size
     agent = DoubleDQNAgent(state_size, action_size)
 
-    batch_size = 32  # Larger batch size for more stable training
-    episodes = 50
+    batch_size = 2  # Larger batch size for more stable training
+    episodes = 5
 
     for e in range(episodes):
         state = env.reset()
@@ -244,9 +272,7 @@ def main():
         total_reward = 0
 
         for time in range(5000):
-            # No visualization: the env.render() call has been removed.
-
-            # Choose an action based on the current state
+            # Rendering has been removed for training; print statements will log progress.
             action = agent.act(state)
             next_state, reward, done, _ = env.step(action)
 
@@ -276,3 +302,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+print("You've made it to the end")
